@@ -1,0 +1,12 @@
+{
+  "name": "claude-code-session-list",
+  "owner": { "name": "hatohato-lab" },
+  "description": "Claude Code の MOD「セッション一覧」（session-list）の配布元",
+  "plugins": [
+    {
+      "name": "session-list",
+      "source": "./session-list",
+      "description": "セッション間の連絡を、セッションを横の行、連絡を縦の矢印にしたシーケンス図（左から右へ時間）で見るペインを開き、詳しい表示では返事待ち、入力欄、会話の地図、AI の要約も出す"
+    }
+  ]
+}

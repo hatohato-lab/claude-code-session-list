@@ -1,0 +1,6 @@
+# Claude Code が MOD を読み込むたびに書き出す型（手で直さない）
+*/.claude-plugin/types/
+# 動作の記録
+*.log
+起動記録.txt
+表示記録.txt

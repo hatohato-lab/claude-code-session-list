@@ -1,0 +1,45 @@
+{
+  "name": "session-list",
+  "version": "0.7.20",
+  "description": "セッション間のやり取りを、白い画面のシーケンス図（横の行がセッション、縦の矢印が連絡、左から右へ時間）で見るペインを開く。設定で、入力欄・名簿・要約を出す詳しい表示にも切り替えられる",
+  "author": {
+    "name": "hatohato-lab"
+  },
+  "types": "./types/index.d.ts",
+  "userConfig": {
+    "view": {
+      "type": "string",
+      "title": "表示の形",
+      "description": "simple＝セッション間のやり取りのシーケンス図だけ（見るだけ）。detail＝入力欄・名簿・返事待ち・要約・やり取りの一覧も出す",
+      "default": "simple",
+      "options": [
+        "simple",
+        "detail"
+      ]
+    },
+    "senderName": {
+      "type": "string",
+      "title": "送り主の呼び名",
+      "description": "入力欄から他のセッションへ送る文の頭に付ける名前。空なら名前を付けない",
+      "default": ""
+    },
+    "workspaceDir": {
+      "type": "string",
+      "title": "ワークスペースのフォルダー",
+      "description": "黒板（00_黒板\\Claude のフォルダー）があるフォルダーの絶対パス。空ならセッションの作業フォルダーを使う。黒板が無ければ、黒板の連絡は出さない",
+      "default": ""
+    },
+    "summaries": {
+      "type": "boolean",
+      "title": "AI の要約を作る",
+      "description": "各セッションの直近のやり取りを小さなモデルで2行に要約する。要約のたびに使用量がかかる",
+      "default": true
+    },
+    "summaryModel": {
+      "type": "string",
+      "title": "要約に使うモデル",
+      "description": "要約に使うモデルの名前（例: haiku）",
+      "default": "haiku"
+    }
+  }
+}
