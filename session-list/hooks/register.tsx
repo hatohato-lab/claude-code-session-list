@@ -6,7 +6,7 @@ import type { Activity, Entry, FeedItem, Link, SessionRow, Snapshot, TalkItem } 
 // ペインの名前（id は英数字だけ。題名は日本語でよい）
 const PANE = 'session-list'
 // 版。/sessions の出力と起動記録.txt に出し、画面が新しい中身になったかを確かめるのに使う（0.7.13 で元の縦の図に戻した）
-const VERSION = '0.7.20'
+const VERSION = '0.7.21'
 const TITLE = 'セッション一覧'
 
 // 生ログの大きさは2秒ごと、様子・やり取り（黒板と合図）は5秒ごと、在席表.py は15秒ごと
@@ -102,6 +102,8 @@ let lastListError: string | null = null
 let lastFeedError: string | null = null
 // /sessions でペインを開いたセッションでだけ動く。全セッションで読み込まれるため、開いていないセッションでは何もしない。閉じたら止まる
 let isPaneOpen = false
+// セッション情報MOD の表のペインが開いているか（開いている間も数字を読み直す）
+let infoPaneOpen = false
 // 最後に記録したペインの大きさ（表示記録.txt を変わったときだけ書くため）
 let lastDims = ''
 
@@ -306,6 +308,10 @@ const SEQ_SELF_FILL = '#ffe4c4'
 const SEQ_SELF_LINE = '#e8913a'
 const SEQ_SELF_BAR = '#f5a04a'
 const SEQ_ROWS_MAX = 14
+// 1枚にまとめる相手のペイン（セッション情報MOD の表）。この mod は、その下に円グラフとやり取りの図を足す
+const INFO_PANE = 'session-info'
+// 円グラフの色（ふつうの色だけ）
+const PIE_COLORS = ['#1f6fb2', '#e8913a', '#2e8b57', '#c0392b', '#8e44ad', '#b8860b', '#7f8c8d']
 
 // SVG の要素を1つ作る。属性は名前と値の組で、値が undefined の属性は書かない。inner が空なら自己閉じ
 function el(tag: string, attrs: Record<string, string | number | undefined>, inner = ''): string {
@@ -315,6 +321,54 @@ function el(tag: string, attrs: Record<string, string | number | undefined>, inn
     if (v !== undefined) out += ' ' + key + '="' + String(v) + '"'
   }
   return inner === '' ? out + '/>' : out + '>' + inner + '</' + tag + '>'
+}
+
+// 図に出すやり取り。直近24時間（無ければ直近の分）の、名簿にいる相手どうしの連絡を古い順に
+function feedItemsFor(snap: Snapshot, now: number): FeedItem[] {
+  const liveNames = new Set(snap.rows.map(row => row.name))
+  const all = [...snap.feed].filter(item => liveNames.has(item.from) && liveNames.has(item.to)).sort((a, b) => a.stamp - b.stamp)
+  const recent = all.filter(item => now - item.stamp <= LINK_WINDOW_MS)
+  return (recent.length > 0 ? recent : all).slice(-SEQ_ROWS_MAX)
+}
+
+// 円グラフの1切れ（中心 cx,cy、半径 r、角度 a0 から a1 まで）
+function pieSlice(cx: number, cy: number, r: number, a0: number, a1: number, color: string): string {
+  const x1 = (cx + r * Math.cos(a0)).toFixed(1)
+  const y1 = (cy + r * Math.sin(a0)).toFixed(1)
+  const x2 = (cx + r * Math.cos(a1)).toFixed(1)
+  const y2 = (cy + r * Math.sin(a1)).toFixed(1)
+  const large = a1 - a0 > Math.PI ? 1 : 0
+  const d = 'M' + cx + ',' + cy + ' L' + x1 + ',' + y1 + ' A' + r + ',' + r + ' 0 ' + large + ' 1 ' + x2 + ',' + y2 + ' Z'
+  return el('path', { d, fill: color, stroke: '#ffffff', 'stroke-width': '1.5' })
+}
+
+// 円グラフ（試し）。各セッションの生ログの大きさの割合。大きい順に6つと、その他。右に色と名前と割合
+function buildPieSvg(rows: SessionRow[]): string {
+  const sized = rows.filter(row => (row.bytes ?? 0) > 0).map(row => ({ name: row.name, bytes: row.bytes ?? 0, isSelf: row.isSelf }))
+  sized.sort((a, b) => b.bytes - a.bytes)
+  const others = sized.slice(6).reduce((sum, one) => sum + one.bytes, 0)
+  const parts = others > 0 ? [...sized.slice(0, 6), { name: 'その他', bytes: others, isSelf: false }] : sized.slice(0, 6)
+  const total = parts.reduce((sum, one) => sum + one.bytes, 0)
+  const W = 520
+  const H = Math.max(200, 50 + parts.length * 24)
+  const out: string[] = []
+  out.push('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + W + ' ' + H + '" width="100%" font-family="Meiryo, sans-serif" font-size="15">')
+  out.push(el('rect', { x: 0, y: 0, width: W, height: H, fill: SEQ_BG }))
+  out.push(el('text', { x: 230, y: 28, fill: SEQ_TEXT, 'font-weight': 'bold' }, '生ログの大きさの割合（試し）'))
+  let angle = -Math.PI / 2
+  parts.forEach((part, i) => {
+    const color = PIE_COLORS[i % PIE_COLORS.length] ?? '#7f8c8d'
+    const share = total > 0 ? part.bytes / total : 0
+    if (share >= 0.9999) out.push(el('circle', { cx: 110, cy: 105, r: 84, fill: color }))
+    else if (share > 0) out.push(pieSlice(110, 105, 84, angle, angle + share * Math.PI * 2, color))
+    angle += share * Math.PI * 2
+    const y = 56 + i * 24
+    out.push(el('rect', { x: 230, y: y - 13, width: 14, height: 14, fill: color }))
+    out.push(el('text', { x: 252, y, fill: SEQ_TEXT, 'font-weight': part.isSelf ? 'bold' : undefined }, xml(cut(part.name, 16)) + '　' + String(Math.round(share * 100)) + '%'))
+  })
+  if (total <= 0) out.push(el('text', { x: 230, y: 60, fill: SEQ_TEXT }, 'まだ数字がありません'))
+  out.push('</svg>')
+  return out.join('')
 }
 
 // 図の寸法。行＝セッション（n 行）、列＝連絡（m 列）。幅はペインに合わせ、高さは行数に合わせて広げる
@@ -972,7 +1026,7 @@ export const register: Register = (on, options) => {
     }
     if (isPaneOpen) void tick($)
     $.clock.every(SIZE_EVERY_MS, () => {
-      if (isPaneOpen) void tick($)
+      if (isPaneOpen || infoPaneOpen) void tick($)
     })
 
     return next(e)
@@ -1010,6 +1064,40 @@ export const register: Register = (on, options) => {
     if (selfId !== '' && e.text.includes(REPLY_MARK + ':' + selfId.slice(0, 8) + '】')) return next(e)
     await addTalk($, { at: await $.clock.now(), dir: 'in', peer: replySender(e.text), text: replyBody(e.text), status: '' })
     return { consumed: '監視画面への返事として、セッション一覧のペインに出した' }
+  }).catch(($, e, next) => next(e))
+
+  // 1枚にまとめる（私の指示「いろんな情報を一枚に表示したい」）。
+  // セッション情報MOD の表のペインに、この mod から円グラフとやり取りの図を足す。
+  // 先に next で、ほかの mod が描いた表を受け取り、その下に足す（描く順番は、mod を入れた順で決まるため）
+  on('ui.render', { component: 'Pane', requestId: INFO_PANE }, async ($, e, next) => {
+    // 後ろに描く mod が無いと next は失敗するので、そのときは足すものだけを描く
+    const rest = await next(e).catch(() => null)
+    if (!infoPaneOpen) {
+      infoPaneOpen = true
+      void tick($)
+    }
+    const table = $.ui.resolve(e)
+    const Svg = e.surface !== 'terminal' && 'Svg' in table ? table.Svg : undefined
+    if (Svg === undefined) return rest
+    const { Box } = table
+    const stored = await read($, snapshot)
+    const rows = (stored.rows ?? []).map(row => ({ ...row, partner: row.partner ?? null, activity: row.activity ?? null, summary: row.summary ?? null }))
+    const snap: Snapshot = { ...EMPTY, ...stored, links: Array.isArray(stored.links) ? stored.links : [], rows }
+    const now = await $.clock.now()
+    const columns = Math.max(40, e.props.bodyColumns)
+    return (
+      <Box flexDirection="column" gap={1}>
+        {rest}
+        <Svg source={buildPieSvg(snap.rows)} alt="各セッションの生ログの大きさの割合の円グラフ" />
+        <Svg source={buildSequenceSvg(snap.rows, feedItemsFor(snap, now), columns, 0, now)} alt="セッションを横の行、やり取りを縦の矢印にした図（左から右へ時間）" isInteractive />
+      </Box>
+    )
+  }).catch(($, e, next) => next(e))
+
+  // 表のペインが閉じたら、そのための読み直しを止める
+  on('ui.close', { id: INFO_PANE }, async ($, e, next) => {
+    infoPaneOpen = false
+    return next(e)
   }).catch(($, e, next) => next(e))
 
   on('ui.close', { id: PANE }, async ($, e, next) => {

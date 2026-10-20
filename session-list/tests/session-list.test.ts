@@ -570,3 +570,31 @@ test('在席表.py が失敗したら、ペインに理由が出る', async ($, 
   expect(await ui.find({ type: 'Text', text: /在席表\.py が失敗しました/ })).toBeDefined()
   await ui.unmount()
 })
+
+test('セッション情報MOD の表のペインに、円グラフとやり取りの図を足して1枚にする', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  stubWorld(on, ran(ATTENDANCE, 0))
+  // セッション情報MOD の表の代わり（この mod より後ろで描く mod）
+  on('ui.render', ($: any, e: any) => $.ui.resolve(e).Text({ children: 'セッション情報の表（試験用）' }))
+
+  await $.session.start(START)
+  const INFO = { ...PANE, requestId: 'session-info', props: { ...PANE.props, title: 'セッション情報' } } as const
+  // 表のペインを描くと、この mod が数字を読み始める
+  const first = await $.ui.mount({ plugin: 'session-list', surface: 'vscode', ...INFO })
+  await first.unmount()
+  await clock.advance(30_000)
+
+  const ui = await $.ui.mount({ plugin: 'session-list', surface: 'vscode', ...INFO })
+  // 表（ほかの mod が描いたもの）が上に残り、その下に円グラフと図が足される
+  expect(await ui.find({ type: 'Text', text: 'セッション情報の表（試験用）' })).toBeDefined()
+  const svgs = await ui.findAll({ type: 'Svg' })
+  expect(svgs.length).toBe(2)
+  const pie = String(svgs[0]?.props.source ?? '')
+  expect(pie).toContain('生ログの大きさの割合（試し）')
+  // 生ログが一番大きい監視係が先に並ぶ
+  expect(pie.indexOf('監視係')).toBeLessThan(pie.indexOf('セッションA'))
+  expect(pie).toContain('<path d="M110,105')
+  const diagram = String(svgs[1]?.props.source ?? '')
+  expect(diagram).toContain('>監視係<')
+  await ui.unmount()
+})
