@@ -598,3 +598,39 @@ test('セッション情報MOD の表のペインに、円グラフとやり取�
   expect(diagram).toContain('>監視係<')
   await ui.unmount()
 })
+
+test('Linux（ホームが / で始まる）では python3 で回し、python3 が無ければ python に切り替える', async ($, on) => {
+  const clock = mock.clock(on, { now: NOW })
+  const used: string[] = []
+  mock.env(on, { HOME: '/home/test' })
+  on('session.start', ($, e) => ({ cwd: e.cwd }))
+  on('session.id', () => ({ value: 'bbbb2222-bbbb' }))
+  on('command.register', () => ({ value: { command: 'sessions' } }))
+  on('ui.panes', () => ({ value: [] }))
+  on('ui.open', () => ({ value: { isPlaced: true } }))
+  on('process.run', ($, e) => {
+    used.push(e.argv[0] ?? '')
+    // この見本の Linux には python3 が無い
+    if (e.argv[0] === 'python3') return { deny: 'python3: not found' }
+    const script = e.argv.find(arg => arg.endsWith('.py')) ?? ''
+    if (script.endsWith('合図表.py')) return { value: ran(BELLS, 0) }
+    if (script.endsWith('様子表.py')) return { value: ran(activityJson(), 0) }
+    return { value: ran(ATTENDANCE, 0) }
+  })
+  on('fs.exists', () => ({ value: false }))
+  on('fs.list', ($, e) => ({ value: entriesOf(e.path) }))
+  on('fs.stat', ($, e) => ({ value: statOf(e.path) }))
+
+  await $.session.start({ cwd: '/work/space', surface: null, isInteractive: true })
+  await $.command.run({ command: 'sessions', args: '' })
+  await clock.advance(2000)
+
+  // 最初は python3 を試し、起動できないので python に切り替える。そのあとは python だけを使う
+  expect(used[0]).toBe('python3')
+  expect(used.filter(command => command === 'python3').length).toBe(1)
+  expect(used).toContain('python')
+  const ui = await $.ui.mount({ plugin: 'session-list', surface: 'terminal', ...PANE })
+  expect(await ui.find({ type: 'Text', text: /セッションA/ })).toBeDefined()
+  expect(await ui.find({ type: 'Text', text: /起動できません/ })).toBeUndefined()
+  await ui.unmount()
+})

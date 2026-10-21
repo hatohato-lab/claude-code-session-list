@@ -29,7 +29,22 @@ SPACES = re.compile(r"\s+")
 
 
 def alive(pid):
-    handle = ctypes.windll.kernel32.OpenProcess(0x1000, False, int(pid))
+    try:
+        pid = int(pid)
+    except (TypeError, ValueError):
+        return False
+    if pid <= 0:
+        return False
+    if os.name != "nt":
+        # Linux と macOS。シグナル 0 は届くかを確かめるだけで、相手には何もしない
+        try:
+            os.kill(pid, 0)
+        except PermissionError:
+            return True
+        except OSError:
+            return False
+        return True
+    handle = ctypes.windll.kernel32.OpenProcess(0x1000, False, pid)
     if not handle:
         return False
     code = ctypes.c_ulong()

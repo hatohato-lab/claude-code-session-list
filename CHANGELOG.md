@@ -1,5 +1,9 @@
 # 変更履歴
 
+## 2026-10-21
+- session-list v0.7.22 を公開した（Linux 向けの直し。同梱の Python 3本が、セッションが動いているかを Linux でも確かめる。Python は、Windows では python、Linux と macOS では python3 の名前で回し、起動できなければもう一方で回す）
+- Linux で確かめる GitHub Actions（linux.yml）を足した。手で起動したときだけ動く
+
 ## 2026-10-20
 - session-list v0.7.21 を公開した（セッション情報MOD の表のペインに、円グラフとやり取りの図を足す試し。いまの公開版のセッション情報MOD では、並ばないことがある）
 

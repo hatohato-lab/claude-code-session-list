@@ -1,12 +1,12 @@
 import { atom, read, update } from 'claude-code'
-import type { EngineInterface, FsEntry, Register } from 'claude-code'
+import type { EngineInterface, FsEntry, ProcessRunInit, ProcessRunResult, Register } from 'claude-code'
 
 import type { Activity, Entry, FeedItem, Link, SessionRow, Snapshot, TalkItem } from '../types'
 
 // ペインの名前（id は英数字だけ。題名は日本語でよい）
 const PANE = 'session-list'
 // 版。/sessions の出力と起動記録.txt に出し、画面が新しい中身になったかを確かめるのに使う（0.7.13 で元の縦の図に戻した）
-const VERSION = '0.7.21'
+const VERSION = '0.7.22'
 const TITLE = 'セッション一覧'
 
 // 生ログの大きさは2秒ごと、様子・やり取り（黒板と合図）は5秒ごと、在席表.py は15秒ごと
@@ -642,6 +642,31 @@ async function findLogPath($: EngineInterface, projectsDir: string, id: string):
   return best === null ? null : best.path
 }
 
+// Python の呼び名。Windows は python、Linux と macOS は python3 だけのことが多い。最初に起動できた方を覚え、次からはそれを使う
+let pythonCommand: string | null = null
+
+// 同梱の Python を回す。その呼び名で起動できない（入っていない）ときは、もう一方の呼び名で試す
+async function runPython($: EngineInterface, args: readonly string[], init: ProcessRunInit): Promise<ProcessRunResult> {
+  const order = home.includes('\\') ? ['python', 'python3'] : ['python3', 'python']
+  const candidates = pythonCommand !== null ? [pythonCommand] : order
+  let failure: unknown = new Error('Python を起動できません')
+  for (const command of candidates) {
+    try {
+      const ran = await $.process.run([command, '-X', 'utf8', ...args], init)
+      // Windows の python3 は、入っていないとストアへの案内を出して 9009 で終わる
+      if (ran.exitCode === 9009) {
+        failure = new Error(command + ' が見つかりません')
+        continue
+      }
+      pythonCommand = command
+      return ran
+    } catch (error) {
+      failure = error
+    }
+  }
+  throw failure
+}
+
 // 在席表.py を回して名前・宛先名・状態を取り直す。失敗したら理由を返す（成功なら null）
 // 登録情報（~/.claude/sessions/*.json）を読み、起動の種類（entrypoint）が sdk-cli のセッションの ID（先頭8桁）を集める。
 // sdk-cli は、タスクスケジューラなどの自動タスクが起こしたセッション。人が開いた VS Code のタブは claude-vscode
@@ -670,7 +695,7 @@ async function refreshList($: EngineInterface): Promise<string | null> {
   const script = join($.plugin.root, 'tools', ATTENDANCE_TOOL)
   let ran
   try {
-    ran = await $.process.run(['python', '-X', 'utf8', script], { timeoutMs: 20000 })
+    ran = await runPython($, [script], { timeoutMs: 20000 })
   } catch (error) {
     return '在席表.py を起動できません: ' + String(error)
   }
@@ -718,7 +743,7 @@ async function refreshBells($: EngineInterface): Promise<string | null> {
   const script = join($.plugin.root, 'tools', BELLS_TOOL)
   let ran
   try {
-    ran = await $.process.run(['python', '-X', 'utf8', script, '-'], { stdin: JSON.stringify(bellOffsets), timeoutMs: 25000 })
+    ran = await runPython($, [script, '-'], { stdin: JSON.stringify(bellOffsets), timeoutMs: 25000 })
   } catch (error) {
     return '合図表.py を起動できません: ' + String(error)
   }
@@ -765,7 +790,7 @@ async function refreshActivity($: EngineInterface): Promise<string | null> {
   const script = join($.plugin.root, 'tools', '様子表.py')
   let ran
   try {
-    ran = await $.process.run(['python', '-X', 'utf8', script], { timeoutMs: 20000 })
+    ran = await runPython($, [script], { timeoutMs: 20000 })
   } catch (error) {
     return '様子表.py を起動できません: ' + String(error)
   }
