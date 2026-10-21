@@ -89,8 +89,8 @@ claude --plugin-dir claude-code-session-list/session-list
 ## 必要なもの
 
 - Claude Code 2.1.300 以降
-- Python 3（`python` の名前で起動できること）
-- Windows（同梱のスクリプトが、セッションのプロセスが動いているかを Windows の API で確かめるため）
+- Python 3（Windows では `python`、Linux と macOS では `python3` の名前で回します。その名前で起動できなければ、もう一方の名前で回します）
+- Windows か Linux。Linux は、GitHub Actions（ubuntu-latest）で、テスト、同梱の Python、マーケットプレイスからの入れ方を確かめています。画面に出るところを実際に確かめたのは Windows です。macOS は確かめていません
 
 図と表の材料は、同梱の `tools/在席表.py`、`tools/合図表.py`、`tools/様子表.py` が、手元の `~/.claude/sessions` と `~/.claude/projects` を読んで作ります。読むだけで、何も書き換えません。`在席表.py` は、同じフォルダーに `在席表_名前の補い.json`（名前の無いセッションに名前を補う表）があれば、それも読みます。
 
