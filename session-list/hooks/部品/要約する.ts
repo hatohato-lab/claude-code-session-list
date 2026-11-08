@@ -5,7 +5,7 @@ import type { EngineInterface } from 'claude-code'
 
 import type { SessionRow, Summary } from '../../types'
 
-const summaries = atom({ plugin: 'session-info', key: 'summaries' } as const, {} as Record<string, Summary>)
+const summaries = atom({ plugin: 'session-list', key: 'summaries' } as const, {} as Record<string, Summary>)
 
 const MODEL = 'haiku'
 const SYSTEM = [
@@ -32,6 +32,17 @@ export function messageOf(row: SessionRow, stored: unknown): string {
   const answer = row.answer ?? ''
   if (one !== undefined && typeof one.text === 'string' && one.text !== '' && one.key === answerKey(answer)) return one.text
   return row.summary ?? ''
+}
+
+// 要約の欄にマウスを載せたときに浮かせる文。最後の答えの終わり600字（10/31 の指示「マウスオーバーでもう少したくさんの文字が出るように」は200字。
+// 11/08 の指示「文字数が多い方が全体像を理解しやすい」で600字にした。セッション表.py は答えの終わり1500字を持ってくる）。
+// 太字と行内コードの記号を除き、3行以上続く空行は詰める。600字を超えるときは頭に「…」を付ける
+export const TAIL_CHARS = 600
+
+export function tailOf(answer: string): string {
+  const plain = answer.replace(/\*\*|`/g, '').replace(/\n{3,}/g, '\n\n').trim()
+  const chars = [...plain]
+  return chars.length <= TAIL_CHARS ? plain : '…' + chars.slice(-TAIL_CHARS).join('').trimStart()
 }
 
 // 要約がまだの答えを1つだけ要約する

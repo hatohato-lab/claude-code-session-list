@@ -3,22 +3,27 @@
 import type { SessionRow, Snapshot } from '../../types'
 
 // ペインの名前（id は英数字だけ。題名は日本語でよい）
-export const PANE = 'session-info'
-export const TITLE = 'セッション情報'
-export const COMMAND = 'session-info'
+export const PANE = 'session-list'
+export const TITLE = 'セッションリスト'
+export const COMMAND = 'session-list'
+// リストと通信の1枚（/session-set）。表はこの mod が描き、下の矢印の図は セッション間通信MOD が足す
+export const SET_PANE = 'session-set'
+export const SET_TITLE = 'セッションリストと通信'
+export const SET_COMMAND = 'session-set'
 
-// 色（黒い文字。このセッションの行は薄い橙、見出しの行は薄い水色、作業中は青、確認待ちは赤）
+// 色（黒い文字。このセッションの行は薄い橙、見出しの行は薄い水色。状態の丸は、作業中が青、確認待ちが赤、待機中が緑）
 export const BLACK = '#000000'
 export const BLUE = '#1f6fb2'
 export const RED = '#c00000'
+export const GREEN = '#2e7d32'
 export const SELF_FILL = '#ffe4c4'
 export const HEAD_FILL = '#eaf6fc'
 
 // 表の材料の最初の値
 export const EMPTY: Snapshot = { rows: [], updatedAt: 0, error: null }
 
-// 読み直しで消えてよい控え（このセッションのID、ペインが開いているか）
-export const live = { selfId: '', isPaneOpen: false }
+// 読み直しで消えてよい控え（このセッションのID、2つのペインがそれぞれ開いているか）
+export const live = { selfId: '', isPaneOpen: false, isSetOpen: false }
 
 export function join(base: string, ...parts: string[]): string {
   const sep = base.includes('\\') ? '\\' : '/'

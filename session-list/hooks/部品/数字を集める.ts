@@ -1,4 +1,4 @@
-// 2秒ごとに セッション表.py を回して、表の材料（名前・状態・圧縮回数・ログの大きさ・最後の答え）を取り直す
+// 10秒ごとに セッション表.py を回して、表の材料（名前・状態・圧縮回数・ログの大きさ・最後の答え）を取り直す
 import { atom, read, update } from 'claude-code'
 import type { EngineInterface } from 'claude-code'
 
@@ -6,10 +6,11 @@ import type { SessionRow } from '../../types'
 import { EMPTY, isRow, join, normalize } from './共通'
 import { summarizeNext } from './要約する'
 
-const snapshot = atom({ plugin: 'session-info', key: 'snapshot' } as const, EMPTY)
+const snapshot = atom({ plugin: 'session-list', key: 'snapshot' } as const, EMPTY)
 
-// 表の数字を新しくする間隔。ペインが開いている間だけ動く
-export const EVERY_MS = 2000
+// 表の数字を新しくする間隔。ペインが開いている間だけ動く。
+// 全セッションで表が開くので、2秒ごとだと 11セッションで PC のコア3つ分がふさがる。10秒ごとにしてコア0.6個分に抑える（私の指示 g、2026-10-24）
+export const EVERY_MS = 10000
 
 let isBusy = false
 let lastKey = ''
@@ -43,7 +44,7 @@ async function refresh($: EngineInterface): Promise<void> {
   })
 }
 
-// 2秒ごとの1回分。前の回がまだ動いていたら飛ばす
+// 10秒ごとの1回分。前の回がまだ動いていたら飛ばす
 export async function tick($: EngineInterface): Promise<void> {
   if (isBusy) return
   isBusy = true

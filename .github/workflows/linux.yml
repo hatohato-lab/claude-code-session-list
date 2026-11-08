@@ -23,10 +23,10 @@ jobs:
         run: npm install -g @anthropic-ai/claude-code
 
       - name: プラグインの形の検査
-        run: claude plugin validate ./session-info
+        run: claude plugin validate ./session-list
 
       - name: テスト
-        working-directory: session-info
+        working-directory: session-list
         run: claude plugin test
 
       # 架空のセッションの記録を作り、同梱の Python を python3 で回す。動いているセッションだけが出ることを見る
@@ -46,13 +46,13 @@ jobs:
           echo "{\"pid\": $LIVE, \"sessionId\": \"$SID\", \"name\": \"00-01\", \"status\": \"busy\", \"entrypoint\": \"claude-vscode\", \"cwd\": \"/work/space\", \"updatedAt\": $NOW}" > "$HOME/.claude/sessions/$LIVE.json"
           echo "{\"pid\": $DEAD, \"sessionId\": \"$GONE\", \"name\": \"00-02\", \"status\": \"idle\", \"entrypoint\": \"claude-vscode\", \"cwd\": \"/work/space\", \"updatedAt\": $NOW}" > "$HOME/.claude/sessions/$DEAD.json"
           echo "{\"type\": \"custom-title\", \"customTitle\": \"試験1\", \"sessionId\": \"$SID\"}" > "$HOME/.claude/projects/-work-space/$SID.jsonl"
-          echo '{}' | python3 -X utf8 session-info/tools/セッション表.py > table.json
+          echo '{}' | python3 -X utf8 session-list/tools/セッション表.py > table.json
           python3 -c "import json; rows = json.load(open('table.json', encoding='utf-8'))['rows']; print([(r['id'][:8], r['name'], r['status']) for r in rows]); ids = [r['id'] for r in rows]; assert any(i.startswith('a0000001') for i in ids); assert not any(i.startswith('b0000002') for i in ids)"
           kill "$LIVE"
 
       - name: マーケットプレイスから入れる
         run: |
           set -euo pipefail
-          claude plugin install session-info --marketplace "$GITHUB_WORKSPACE"
+          claude plugin install session-list --marketplace "$GITHUB_WORKSPACE"
           claude plugin list | tee installed.txt
-          grep -q session-info installed.txt
+          grep -q session-list installed.txt

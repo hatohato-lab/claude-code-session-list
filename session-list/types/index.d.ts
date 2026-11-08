@@ -37,7 +37,7 @@ export type Snapshot = {
 declare module 'claude-code' {
   interface PluginState {
     // sendCount は送った回数（入力ボックスを空に戻すため）、sendNote は送った結果の1行
-    // openTeams は、やり取りを開いているチーム
-    'session-info': { snapshot: Snapshot; paneWanted: boolean; sendCount: number; sendNote: string; openTeams: string[]; summaries: Record<string, Summary> }
+    // openTeams は、やり取りを開いているチーム。setWanted は /session-set のペインを開いておきたいか
+    'session-list': { snapshot: Snapshot; paneWanted: boolean; setWanted: boolean; sendCount: number; sendNote: string; openTeams: string[]; summaries: Record<string, Summary> }
   }
 }
