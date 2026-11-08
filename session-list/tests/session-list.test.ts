@@ -116,11 +116,11 @@ test('1セッション＝1行の表で、一番右が要約の列になり、こ
       expect(await ui.find({ type: 'Text', text })).toBeDefined()
     }
     // 見出しの行と、一番右の要約の列（最後の報告の要約）。列名は1〜2文字（10/31 の指示）
-    for (const text of ['要約', '名前', '進', '送', '開く', '見出しの直し（2点）', '表を直しました。', '見出しの整え方（3点）']) {
+    for (const text of ['要約', '名前', '進', '開く', '見出しの直し（2点）', '表を直しました。', '見出しの整え方（3点）']) {
       expect(await ui.find({ type: 'Text', text })).toBeDefined()
     }
-    // 前の列名と、消した列（詳しく、状態、ID）は出さない。状態は名前の左の丸、ID は開くで写す（11/08 の指示）
-    for (const text of ['メッセージ', '進める', '送る文', '詳しく', /^状態$/, /^ID$/, /^作$/, /^待$/, /^確$/]) {
+    // 前の列名と、消した列（詳しく、状態、ID、送）は出さない。状態は名前の左の丸、ID は開くで写す（11/08 の指示）
+    for (const text of ['メッセージ', '進める', '送る文', '詳しく', /^状態$/, /^ID$/, /^送$/, /^作$/, /^待$/, /^確$/]) {
       expect(await ui.find({ type: 'Text', text })).toBeUndefined()
     }
     // メッセージの字は小さくする（10/18 の指示）
@@ -147,17 +147,12 @@ test('1セッション＝1行の表で、一番右が要約の列になり、こ
   }
 })
 
-test('各行に入力ボックスが1つずつあり、g のボタンは g を求めていて作業中でないセッションの行にだけ出る', async ($, on) => {
+test('入力ボックスは無く、g のボタンは g を求めていて作業中でないセッションの行にだけ出る', async ($, on) => {
   await started($, on)
   const ui = await $.ui.mount({ plugin: 'session-list', surface: 'vscode', ...PANE })
-  const inputs = await ui.findAll({ type: 'Input' })
-  expect(inputs.length).toBe(4)
-  // 送るボタンは出さない（空の名前。VS Code は名前が空ならボタンを描かない）。Enter で送る（10/18 の指示で欄を狭めたため）
-  expect(inputs.every(found => found.props.submitLabel === '')).toBe(true)
-  // 入力ボックスの箱は4桁で、はみ出す分を隠す（見える幅は全角1文字分。10/31 の指示）
-  const box = await ui.find({ type: 'Box', key: 'aaaa1111-aaaa-input' })
-  expect(box?.props.width).toBe(4)
-  expect(box?.props.overflow).toBe('hidden')
+  // 送（入力ボックス）の列は無くした（11/08 の指示「送信の列もいらないです」）
+  expect((await ui.findAll({ type: 'Input' })).length).toBe(0)
+  expect(await ui.find({ type: 'Box', key: 'aaaa1111-aaaa-input' })).toBeUndefined()
   const keys = (await ui.findAll({ type: 'Button' })).map(found => String(found.props.key))
   // セッションD も g を求めているが、作業中なので出さない（g を受け取って作業を始めたら、どの表からも消える）
   expect(keys.filter(key => key.startsWith('g-')).sort()).toEqual(['g-aaaa1111-aaaa', 'g-' + SELF].sort())
@@ -228,33 +223,6 @@ test('このセッションの行の g を押すと、使っている人の発�
   await ui.press({ key: 'g-' + SELF })
   await clock.advance(100)
   expect(submitted).toEqual([{ text: 'g', asUser: true }])
-  expect(sent).toEqual([])
-  await ui.unmount()
-})
-
-test('他のセッションの行の入力ボックスに打って Enter を押すと、その文がそのセッションへ届き、入力ボックスは空に戻る', async ($, on) => {
-  const { sent } = stubSend(on)
-  const { clock } = await started($, on)
-  const ui = await $.ui.mount({ plugin: 'session-list', surface: 'vscode', ...PANE })
-  await ui.input({ key: 'input-cccc3333-cccc-0', text: 'はい、それで進めてください' })
-  await clock.advance(100)
-  expect(sent.map(one => one.text)).toEqual(['はい、それで進めてください'])
-  expect(sent[0]?.to).toContain('cccc3333-cccc')
-  await ui.unmount()
-
-  const after = await $.ui.mount({ plugin: 'session-list', surface: 'vscode', ...PANE })
-  const keys = (await after.findAll({ type: 'Input' })).map(found => String(found.props.key))
-  expect(keys).toContain('input-cccc3333-cccc-1')
-  await after.unmount()
-})
-
-test('このセッションの行の入力ボックスに打つと、使っている人の発言として入る', async ($, on) => {
-  const { submitted, sent } = stubSend(on)
-  const { clock } = await started($, on)
-  const ui = await $.ui.mount({ plugin: 'session-list', surface: 'vscode', ...PANE })
-  await ui.input({ key: 'input-' + SELF + '-0', text: '2番の見出しを直してください' })
-  await clock.advance(100)
-  expect(submitted).toEqual([{ text: '2番の見出しを直してください', asUser: true }])
   expect(sent).toEqual([])
   await ui.unmount()
 })
@@ -424,25 +392,35 @@ test('各セッションの最後の答えを AI が1文に要約し、要約の
   await ui.unmount()
 })
 
-test('要約の欄にマウスを載せると出る箱は、行の幅いっぱいで最後の報告の終わり600字が入り、上半分の行は下に、下半分の行は上に出る', async ($, on) => {
+test('要約を押すと、その行のすぐ下に最後の報告の終わり600字が開き、もう一度押すと閉じる', async ($, on) => {
   await started($, on)
-  const ui = await $.ui.mount({ plugin: 'session-list', surface: 'vscode', ...PANE })
-  // 隠して置いた、位置固定の箱。マウスを載せたときの hover は、エンジンが props の外に持つので、テストからは見えない
-  const cards = (await ui.findAll({ type: 'Box' })).filter(found => found.props.display === 'none' && found.props.position === 'absolute')
-  // 答えのある4行に1つずつ
-  expect(cards.length).toBe(4)
-  // key を付けない（付けると箱そのものがマウスの範囲になり、隠れたまま出ない）
-  expect(cards.every(found => found.key === undefined)).toBe(true)
-  // 行の幅いっぱい（11/08 の指示）
-  expect(cards.every(found => found.props.left === 0 && found.props.right === 0)).toBe(true)
-  // 上の2行（監視係、セッションA）は行の下に、下の2行（セッションC、セッションD）は行の上に出す（ペインの下の端で切れないように）
-  expect(cards.map(found => (found.props.top === 1 ? '下' : found.props.bottom === 1 ? '上' : '？'))).toEqual(['下', '下', '上', '上'])
+  let ui = await $.ui.mount({ plugin: 'session-list', surface: 'vscode', ...PANE })
+  // マウスを載せる箱は無くした（VS Code で出なかったため。11/08）
+  expect((await ui.findAll({ type: 'Box' })).filter(found => found.props.position === 'absolute')).toEqual([])
+  // 押す前は、最後の報告の終わりは出ていない
+  expect(await ui.find({ type: 'Text', text: 'お返事待ちです。この形でよければ g をお願いします。' })).toBeUndefined()
+  await ui.press({ key: 'tail-aaaa1111-aaaa' })
+  await ui.press({ key: 'tail-dddd4444-dddd' })
+  await ui.unmount()
+
+  ui = await $.ui.mount({ plugin: 'session-list', surface: 'vscode', ...PANE })
   // 太字の記号は除く
   expect(await ui.find({ type: 'Text', text: 'お返事待ちです。この形でよければ g をお願いします。' })).toBeDefined()
   // 600字を超える答えは、終わりの600字の頭に「…」を付けて出す
   const long = await ui.find({ type: 'Text', text: /^…/ })
   expect([...String(long?.text)].length).toBe(601)
   expect(String(long?.text).endsWith('よければ g をお願いします。')).toBe(true)
+  // 開いた欄は、押した行のすぐ下に並ぶ
+  // 開いた欄は、押した行（セッションA）のすぐ下で、次の行（セッションC）より上に並ぶ
+  const keys = (await ui.findAll({ type: 'Box' })).map(found => String(found.key))
+  expect(keys.indexOf('tail-box-aaaa1111-aaaa')).toBeGreaterThan(keys.indexOf('row-aaaa1111-aaaa'))
+  expect(keys.indexOf('tail-box-aaaa1111-aaaa')).toBeLessThan(keys.indexOf('row-cccc3333-cccc'))
+  // もう一度押すと閉じる
+  await ui.press({ key: 'tail-aaaa1111-aaaa' })
+  await ui.unmount()
+  ui = await $.ui.mount({ plugin: 'session-list', surface: 'vscode', ...PANE })
+  expect(await ui.find({ type: 'Text', text: 'お返事待ちです。この形でよければ g をお願いします。' })).toBeUndefined()
+  expect(await ui.find({ type: 'Text', text: /^…/ })).toBeDefined()
   await ui.unmount()
 })
 

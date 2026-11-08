@@ -38,6 +38,7 @@ declare module 'claude-code' {
   interface PluginState {
     // sendCount は送った回数（入力ボックスを空に戻すため）、sendNote は送った結果の1行
     // openTeams は、やり取りを開いているチーム。setWanted は /session-set のペインを開いておきたいか
-    'session-list': { snapshot: Snapshot; paneWanted: boolean; setWanted: boolean; sendCount: number; sendNote: string; openTeams: string[]; summaries: Record<string, Summary> }
+    // openTails は、要約を押して、行の下に最後の報告の終わりを開いているセッション（11/08）
+    'session-list': { snapshot: Snapshot; paneWanted: boolean; setWanted: boolean; sendCount: number; sendNote: string; openTeams: string[]; summaries: Record<string, Summary>; openTails: string[] }
   }
 }

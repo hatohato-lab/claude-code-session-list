@@ -1,10 +1,12 @@
 // ペインの中身を描く。1セッション＝1行の表で、見出しの行を付ける
-// 列は左から、チームの線、チームの ■、名前（左に状態の色の丸）、進（g）、送（入力ボックス）、開く（タブを前に出し、ID をコピー）、要約（最後の報告の要約）
+// 列は左から、チームの線、チームの ■、名前（左に状態の色の丸）、進（g）、開く（タブを前に出し、ID をコピー）、要約（最後の報告の要約。押すと行の下に終わり600字）
 // 10/18、2行や4行のカードにすると分かりづらいとの指示で1行の表に戻した。要約は指示で一番右に置き、字を小さくした
 // 10/31、詳しくの列を消し、列名を 進・送・要約 に縮めた（私の指示「詳しくというボタンは使用頻度が非常に低い」「一文字でいい」）
 // 11/08、状態の列を名前の左の色の丸にし、ID の列を消して開くで写すようにした（私の指示「一列とるのはもったいないので、名前の所に丸いアイコン」
 // 「開くボタンを押したら自動的にクリップボードに入るように」）。要約に載せたときの箱は、表の幅いっぱいで600字にした
 // 11/08、待機中で返事を待っていない行（背景が白い行）は出さず、隠した数を表の下に出すことにした（私の指示「表示する必要がない」）
+// 11/08、マウスを載せる箱は VS Code で出なかったので、要約を押すと行の下に開く形にした（私の指示「クリックしたら下の方に詳細が出てくる」）。
+// 送（入力ボックス）の列は外した（私の指示「送信の列もいらないです。使わないことがわかりました」）
 // チーム（名前の数字を除いた部分が同じセッションが2つ以上）は続けて並べ、左に同じ色の線と ■ を付ける。
 // チームの中では、主（直近3時間にチームへ一番多く連絡を出したセッション）を先頭にし、ほかには「└」を付ける。
 // チームの先頭の名前を押すと、そのチームの最近のやり取りが、チームの下に開く
@@ -15,14 +17,15 @@ import type { EngineInterface, RenderElement, RenderInput } from 'claude-code'
 import type { Inbox, SessionRow, Summary } from '../../types'
 import { BLACK, BLUE, EMPTY, GREEN, HEAD_FILL, RED, SELF_FILL, fitCells, live, normalize } from './共通'
 import { openRow } from './タブを前に出す'
-import { asksG, findAsk, pressG, readNote, sendText } from './文を送る'
+import { asksG, findAsk, pressG, readNote } from './文を送る'
 import { messageOf, tailOf } from './要約する'
 
 const snapshot = atom({ plugin: 'session-list', key: 'snapshot' } as const, EMPTY)
-const sendCount = atom({ plugin: 'session-list', key: 'sendCount' } as const, 0)
 const sendNote = atom({ plugin: 'session-list', key: 'sendNote' } as const, '')
 // やり取りを開いているチーム（チームの名前）
 const openTeams = atom({ plugin: 'session-list', key: 'openTeams' } as const, [] as string[])
+// 要約を押して、行の下に最後の報告の終わりを開いているセッション（セッションID）
+const openTails = atom({ plugin: 'session-list', key: 'openTails' } as const, [] as string[])
 // AI の要約（メッセージの列に出す）
 const summaries = atom({ plugin: 'session-list', key: 'summaries' } as const, {} as Record<string, Summary>)
 
@@ -31,10 +34,7 @@ const summaries = atom({ plugin: 'session-list', key: 'summaries' } as const, {}
 const NAME_CELLS = 16
 const DOT_CELLS = 2
 const BUTTON_CELLS = 5
-// 入力ボックスの幅。声で入れて Enter を押すだけなので、全角1文字分が見えればよい（10/31 の指示「テキストボックスは一文字分あれば十分」）。
-// 送のボタンは無くし、Enter で送る（ボタンがあると、狭い幅でボタンが下に落ちて行が2段になる）。
-// VS Code の入力欄は、最小の幅が半角8文字分と枠の分あって狭められないので、4桁の箱に入れてはみ出す分を隠す
-const INPUT_CELLS = 4
+// 送（入力ボックス）の列は、11/08 の指示で無くした
 // 開くのボタンの列（押すと、ID の全体がクリップボードに入り、そのセッションのタブが VS Code の一番前に出る。10/18 と 11/08 の指示）。
 // ID の列（10/24 の指示）は、11/08 の指示で無くした
 const OPEN_CELLS = 5
@@ -44,8 +44,7 @@ const TEAM_COLORS = ['#2e7d32', '#1565c0', '#6a1b9a', '#ef6c00', '#00838f']
 const NO_NAME = '（名前なし）'
 // 返事を待っている行の色
 const WAIT_FILL = '#fff3c4'
-// 要約にマウスを載せたときに浮かせる箱の、地の色と枠の色
-const CARD_FILL = '#ffffff'
+// 要約を押したときに行の下に開く欄の、枠の色
 const CARD_BORDER = '#999999'
 // 主を決めるときに数える連絡の範囲（直近3時間）と、開いたやり取りに出す件数
 const LEAD_WINDOW_MS = 3 * 60 * 60 * 1000
@@ -166,18 +165,16 @@ function hhmm(at: number): string {
 export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>): Promise<RenderElement> {
   const table = $.ui.resolve(e)
   const { Box, Text, Button } = table
-  // 入力ボックスは描ける画面でだけ出す
-  const Input = 'Input' in table ? table.Input : undefined
   const snap = normalize(await read($, snapshot))
   const now = await $.clock.now()
   const shown = snap.rows.filter(isShown)
   const hiddenCount = snap.rows.length - shown.length
   const groups = arrange(shown, live.selfId, now)
-  const storedCount = await read($, sendCount)
-  const count = typeof storedCount === 'number' ? storedCount : 0
   const note = readNote(await read($, sendNote))
   const storedOpen = await read($, openTeams)
   const open = Array.isArray(storedOpen) ? storedOpen : []
+  const storedTails = await read($, openTails)
+  const tails = Array.isArray(storedTails) ? storedTails : []
   const storedSummaries = await read($, summaries)
   if (snap.rows.length === 0) {
     return (
@@ -193,8 +190,12 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>): Prom
       return current.includes(key) ? current.filter(one => one !== key) : [...current, key]
     })
 
-  // 表の上から何行目か（要約の箱を、行の上と下のどちらに出すかを決める）
-  const order = groups.flatMap(group => group.rows.map(row => row.id))
+  // 要約を押すたびに、その行の下の欄を開け閉めする
+  const toggleTail = (id: string) =>
+    update($, openTails, list => {
+      const current = Array.isArray(list) ? list : []
+      return current.includes(id) ? current.filter(one => one !== id) : [...current, id]
+    })
 
   const drawRow = (group: Group, row: SessionRow, index: number) => {
     const isSelf = row.id === live.selfId
@@ -202,13 +203,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>): Prom
     const dot = statusDot(row.status)
     const prefix = group.key === '' || group.lead === null ? '' : row.id === group.lead ? '主 ' : '└ '
     const label = fitCells(prefix + row.name, NAME_CELLS - DOT_CELLS)
-    // 要約の欄は、マウスを載せると最後の答えの終わりを浮かせる（10/31 の指示。11/08 の指示で600字）。
-    // 浮かせる箱は行の幅いっぱいにするため、要約の欄ではなく行の箱の中の最後に置き、要約の欄と同じ scope で結ぶ。
-    // 箱に key を付けると、箱そのものがマウスの範囲になり、隠れたまま出なくなるので付けない。要約の文を切るのは内側の箱だけにする。
-    // 表の上半分の行は箱を行の下に、下半分の行は行の上に出す（ペインの下の端で切れないように）
-    const tail = tailOf(row.answer ?? '')
-    const scope = 'tail-' + row.id
-    const place = order.indexOf(row.id) >= Math.ceil(order.length / 2) ? { bottom: 1 } : { top: 1 }
+    // 要約の欄は押せる文にする。押すと、行のすぐ下に最後の答えの終わり600字が開く（drawTail）。要約の文を切るのは内側の箱だけにする
     return (
       <Box key={'row-' + row.id} flexDirection="row" flexWrap="nowrap" gap={1} alignItems="stretch" backgroundColor={isSelf ? SELF_FILL : isWaiting(row) ? WAIT_FILL : undefined}>
         <Box key={row.id + '-bar'} width={1} flexShrink={0} backgroundColor={group.color}>
@@ -232,30 +227,26 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>): Prom
         <Box key={row.id + '-button'} width={BUTTON_CELLS} flexShrink={0} flexDirection="column" justifyContent="center" alignItems="center">
           {asksG(row) && <Button key={'g-' + row.id} label="g" onPress={() => void pressG($, row)} />}
         </Box>
-        <Box key={row.id + '-input'} width={INPUT_CELLS} flexShrink={0} overflow="hidden">
-          {Input !== undefined && (
-            <Input
-              key={'input-' + row.id + '-' + String(count)}
-              submitLabel=""
-              onSubmit={value => {
-                void sendText($, row, value)
-              }}
-            />
-          )}
-        </Box>
         <Box key={row.id + '-open'} width={OPEN_CELLS} flexShrink={0} flexDirection="column" justifyContent="center" alignItems="center">
           <Button key={'open-' + row.id} label="開" onPress={press => void openRow($, row, press.surface)} />
         </Box>
-        <Box key={row.id + '-message'} flexGrow={1} flexShrink={1} minWidth={0} flexDirection="column" justifyContent="center" hover={{ scope }}>
+        <Box key={row.id + '-message'} flexGrow={1} flexShrink={1} minWidth={0} flexDirection="column" justifyContent="center">
           <Box minWidth={0} overflow="hidden">
-            <Text color={textColor} size="caption" wrap="truncate-end">{messageOf(row, storedSummaries)}</Text>
+            <Button key={'tail-' + row.id} plain onPress={() => void toggleTail(row.id)}>
+              <Text color={textColor} size="caption" wrap="truncate-end">{messageOf(row, storedSummaries)}</Text>
+            </Button>
           </Box>
         </Box>
-        {tail !== '' && (
-          <Box position="absolute" {...place} left={0} right={0} display="none" hover={{ scope, display: 'flex' }} flexDirection="column" backgroundColor={CARD_FILL} borderStyle="single" borderColor={CARD_BORDER} paddingX={1}>
-            <Text color={BLACK}>{tail}</Text>
-          </Box>
-        )}
+      </Box>
+    )
+  }
+
+  // 要約を押した行の下に開く欄。最後の答えの終わり600字（答えが無ければ、そのことを1行で出す）
+  const drawTail = (row: SessionRow) => {
+    const tail = tailOf(row.answer ?? '')
+    return (
+      <Box key={'tail-box-' + row.id} flexDirection="column" borderStyle="single" borderColor={CARD_BORDER} paddingX={1}>
+        <Text color={BLACK}>{tail !== '' ? tail : row.name + ' の最後の報告は、まだありません'}</Text>
       </Box>
     )
   }
@@ -293,9 +284,6 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>): Prom
         <Box key="head-button" width={BUTTON_CELLS} flexShrink={0} justifyContent="center">
           <Text bold color={BLACK}>進</Text>
         </Box>
-        <Box key="head-input" width={INPUT_CELLS} flexShrink={0}>
-          <Text bold color={BLACK}>送</Text>
-        </Box>
         <Box key="head-open" width={OPEN_CELLS} flexShrink={0} justifyContent="center">
           <Text bold color={BLACK}>開く</Text>
         </Box>
@@ -305,7 +293,7 @@ export async function drawPane($: EngineInterface, e: RenderInput<'Pane'>): Prom
       </Box>
       {groups.map(group => (
         <Box key={'group-' + (group.key !== '' ? group.key : group.rows[0]?.id ?? '')} flexDirection="column">
-          {group.rows.map((row, index) => drawRow(group, row, index))}
+          {group.rows.flatMap((row, index) => (tails.includes(row.id) ? [drawRow(group, row, index), drawTail(row)] : [drawRow(group, row, index)]))}
           {group.key !== '' && open.includes(group.key) && drawTalk(group)}
         </Box>
       ))}
