@@ -24,8 +24,9 @@ export type SessionRow = {
 
 export type Inbox = { from: string; text: string; at: number }
 
-// AI の要約。key はどの答えの要約か（答えの指紋）、text は要約の1文（失敗したら空）
-export type Summary = { key: string; text: string }
+// AI の要約。key はどの答えの要約か（答えの指紋）、text は要約の見出し（失敗したら空）。
+// isDone は、AI がその答えを「作業を一区切り終えた報告」と判断したか（11/15。状態の【完】に使う。失敗したときと、前の版の控えには無い）
+export type Summary = { key: string; text: string; isDone?: boolean }
 
 // ペインが描く材料。updatedAt は最後に読み直した時刻（ミリ秒）、error は直前の読み直しの失敗の理由
 export type Snapshot = {
@@ -38,7 +39,8 @@ declare module 'claude-code' {
   interface PluginState {
     // sendCount は送った回数（入力ボックスを空に戻すため）、sendNote は送った結果の1行
     // openTeams は、やり取りを開いているチーム。setWanted は /session-set のペインを開いておきたいか
-    // openTails は、要約を押して、行の下に最後の報告の終わりを開いているセッション（11/08）
-    'session-list': { snapshot: Snapshot; paneWanted: boolean; setWanted: boolean; sendCount: number; sendNote: string; openTeams: string[]; summaries: Record<string, Summary>; openTails: string[] }
+    // showAll は、ペインに入りきらない行も全部出しているか（11/14。見出しの行の「ほか N を開く」を押すと true）
+    // openTails（要約を押して行の下に開いた欄。11/08）は、11/15 に欄ごと無くした
+    'session-list': { snapshot: Snapshot; paneWanted: boolean; setWanted: boolean; sendCount: number; sendNote: string; openTeams: string[]; summaries: Record<string, Summary>; showAll: boolean }
   }
 }

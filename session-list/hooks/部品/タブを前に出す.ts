@@ -1,4 +1,8 @@
-// 開くのボタン（10/18 の指示）。押したセッションのタブを、VS Code の一番前に出す。
+// 「開」のボタンを押したときの動き。押したセッションのタブを、VS Code の一番前に出す。
+// 10/18 の指示で「開」のボタンとして作り、11/15 の指示で一度、要約のボタンに移した
+// （私の指示「要約のところのクリックをすると開くようにしてください。そして開くボタンは廃止してください」）。
+// 同じ日に「開」のボタンへ戻した。VS Code は、押せるボタンの中の字を灰色か青地に白に決めていて、要約を黒い字で出すには、
+// 要約をボタンの外に出すことになるため（私の指示「灰色の文字のフォントはやめて下さい全部ですね。黒の濃い字にして下さい」）。
 // VS Code の Claude Code 拡張は、vscode://anthropic.claude-code/open?session=<セッションID> を開くと、
 // そのセッションのタブがあれば前に出し、無ければ開く。この URL を、Windows の start で開く。
 // 11/08、開くが効かなかった原因が分かった。VS Code のタブのセッションは、拡張から ELECTRON_RUN_AS_NODE=1 を引き継ぐ。
@@ -39,15 +43,18 @@ async function bringToFront($: EngineInterface, row: SessionRow): Promise<string
   }
 }
 
-// 開くを押したとき。ID を写し、タブのセッションならタブを前に出して、結果を表の下の1行に出す
+// 「開」のボタンを押したとき。ID を写し、タブのセッションならタブを前に出す。
+// 表の下の1行は、前に出せなかったとき、写せなかったとき、ターミナルのセッションで前に出すタブが無いときだけ出す。
+// うまくいったら、前の行も消す（11/14 の指示「この下に表示されているのはもう表示しなくていいです」）
 export async function openRow($: EngineInterface, row: SessionRow, surface: RenderSurface): Promise<void> {
-  const copied = await copyId($, row, surface)
-  let front: string
+  const copyProblem = await copyId($, row, surface)
+  const problems: string[] = []
   if (isTab(row)) {
     const reason = await bringToFront($, row)
-    front = reason === null ? row.name + ' のタブを前に出しました' : row.name + ' のタブを前に出せませんでした（' + reason + '）'
+    if (reason !== null) problems.push(row.name + ' のタブを前に出せませんでした（' + reason + '）')
   } else {
-    front = row.name + ' はターミナルのセッションなので、タブは前に出せません'
+    problems.push(row.name + ' はターミナルのセッションなので、タブは前に出せません' + (copyProblem === null ? '（ID はコピーしました）' : ''))
   }
-  await update($, sendNote, () => JSON.stringify({ id: row.id, text: front + '。' + copied }))
+  if (copyProblem !== null) problems.push(copyProblem)
+  await update($, sendNote, () => (problems.length === 0 ? '' : JSON.stringify({ id: row.id, text: problems.join('。') })))
 }

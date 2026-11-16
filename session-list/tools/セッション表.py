@@ -7,6 +7,10 @@
 標準入力に、前回の控え（生ログごとの、読み終えた位置・圧縮回数・名前）を JSON で受け取り、
 増えた分だけを読む。控えが空なら生ログを頭から読む。
 出力: {"rows": [{"id", "name", "status", "compactions", "bytes"}], "cache": {生ログの場所: 控え}}
+
+ほかの呼び方が2つある。
+「--last-answer セッションID」は、そのセッションの最後の答えを返す。
+「--now セッションID」は、そのセッションの今の状態と最後の答え（末尾 ANSWER_TAIL 字）を返す。表の g を押したときの確かめに使う。
 """
 import ctypes
 import glob
@@ -247,6 +251,18 @@ def main():
     # 「--last-answer セッションID」のときは、そのセッションの最後の答えだけを返す
     if len(sys.argv) >= 3 and sys.argv[1] == "--last-answer":
         json.dump({"answer": last_answer(sys.argv[2])}, sys.stdout, ensure_ascii=False)
+        return
+    # 「--now セッションID」のときは、そのセッションの今の状態と、最後の答え（表と同じ末尾 ANSWER_TAIL 字）だけを返す。
+    # 表の g を押したときに、表を読み直したあとで相手が作業を始めていないか、答えが変わっていないかを確かめるため（11/14）。
+    # 閉じていれば、状態は「閉じている」にする
+    if len(sys.argv) >= 3 and sys.argv[1] == "--now":
+        sid = sys.argv[2]
+        d = registrations().get(sid)
+        status = d.get("status") if d else None
+        json.dump({
+            "status": (STATUS.get(status, status if isinstance(status, str) and status else "不明")) if d else "閉じている",
+            "answer": last_answer(sid)[-ANSWER_TAIL:],
+        }, sys.stdout, ensure_ascii=False)
         return
     try:
         cache = json.loads(sys.stdin.read() or "{}")
